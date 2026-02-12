@@ -1,0 +1,15 @@
+
+# Ignore data and models
+Teeth_Dataset/
+datasetTeeth/
+*.pth
+*.pt
+
+# Ignore Jupyter/Python noise
+__pycache__/
+.ipynb_checkpoints/
+.virtualenv/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
