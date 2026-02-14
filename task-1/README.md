@@ -1,4 +1,4 @@
-# Teeth Classification Project
+# Teeth Classification Using Traditional CNN
 
 A deep learning project for automated classification of dental images into 7 different categories using a custom CNN architecture built with PyTorch.
 
