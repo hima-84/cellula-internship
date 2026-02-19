@@ -15,9 +15,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code and model weights
-COPY app.py .
-COPY Tas2k.pth .
-
+COPY app.py /app/
+COPY Tas2k.pth /app/
+COPY requirements.txt /app/
 # Expose Streamlit port
 EXPOSE 8501
 
