@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Water Segmentation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #38bdf8;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #64748b;
+      margin-bottom: 36px;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 32px;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .status.ready   { background: #064e3b; color: #6ee7b7; }
+    .status.missing { background: #4c1d1d; color: #fca5a5; }
+
+    .drop-zone {
+      border: 2px dashed #334155;
+      border-radius: 8px;
+      padding: 48px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 20px;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: #38bdf8;
+      background: #0f2744;
+    }
+
+    .drop-icon { font-size: 2.5rem; margin-bottom: 10px; }
+    .drop-text { font-size: 0.95rem; color: #94a3b8; }
+    .drop-hint { font-size: 0.8rem; color: #475569; margin-top: 6px; }
+
+    #file-input { display: none; }
+
+    .file-name {
+      font-size: 0.85rem;
+      color: #38bdf8;
+      margin-bottom: 16px;
+      min-height: 20px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #0369a1;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #0284c7; }
+    button:disabled { background: #1e3a4a; color: #475569; cursor: not-allowed; }
+
+    .spinner {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #64748b;
+    }
+
+    .result-card {
+      display: none;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 900px;
+      margin-top: 24px;
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .result-title { font-size: 1rem; font-weight: 600; color: #38bdf8; }
+
+    .water-badge {
+      background: #0c4a6e;
+      color: #7dd3fc;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .result-card img {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
+
+    .error-box {
+      display: none;
+      background: #4c1d1d;
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-top: 16px;
+      color: #fca5a5;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🌊 Water Segmentation</h1>
+  <p class="subtitle">EfficientNet-B4 + U-Net — Sentinel-2 / Landsat</p>
+
+  <div class="card">
+
+    {% if model_ready %}
+      <span class="status ready">✓ Model loaded</span>
+    {% else %}
+      <span class="status missing">✗ best_transfer.pth not found</span>
+    {% endif %}
+
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">🛰️</div>
+      <div class="drop-text">Drop your .tif file here</div>
+      <div class="drop-hint">or click to browse — must be 12-band, 128×128</div>
+    </div>
+
+    <input type="file" id="file-input" accept=".tif,.tiff">
+    <div class="file-name" id="file-name">no file selected</div>
+
+    <button id="predict-btn" disabled>Run Prediction</button>
+
+    <div class="spinner" id="spinner">⏳ running model...</div>
+    <div class="error-box" id="error-box"></div>
+  </div>
+
+  <div class="result-card" id="result-card">
+    <div class="result-header">
+      <span class="result-title">Result</span>
+      <span class="water-badge" id="water-pct"></span>
+    </div>
+    <img id="result-img" src="" alt="prediction result">
+  </div>
+
+  <script>
+    const dropZone    = document.getElementById('drop-zone');
+    const fileInput   = document.getElementById('file-input');
+    const fileName    = document.getElementById('file-name');
+    const predictBtn  = document.getElementById('predict-btn');
+    const spinner     = document.getElementById('spinner');
+    const resultCard  = document.getElementById('result-card');
+    const resultImg   = document.getElementById('result-img');
+    const waterPct    = document.getElementById('water-pct');
+    const errorBox    = document.getElementById('error-box');
+
+    let selectedFile = null;
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault(); dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) setFile(f);
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) setFile(fileInput.files[0]);
+    });
+
+    function setFile(f) {
+      selectedFile = f;
+      fileName.textContent = f.name;
+      predictBtn.disabled = false;
+      resultCard.style.display = 'none';
+      errorBox.style.display = 'none';
+    }
+
+    predictBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      predictBtn.disabled = true;
+      spinner.style.display = 'block';
+      resultCard.style.display = 'none';
+      errorBox.style.display = 'none';
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      try {
+        const res  = await fetch('/predict', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.error) {
+          errorBox.textContent = data.error;
+          errorBox.style.display = 'block';
+        } else {
+          resultImg.src     = 'data:image/png;base64,' + data.image;
+          waterPct.textContent = `💧 ${data.water_pct}% water`;
+          resultCard.style.display = 'block';
+        }
+      } catch (err) {
+        errorBox.textContent = 'Request failed — is Flask running?';
+        errorBox.style.display = 'block';
+      }
+
+      spinner.style.display = 'none';
+      predictBtn.disabled = false;
+    });
+  </script>
+
+</body>
+</html>
